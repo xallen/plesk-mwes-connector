@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-import os, sys, tempfile, pycurl, StringIO, smtplib, xml.dom.minidom, re, sqlite3
-from subprocess import Popen, PIPE
-from email.mime.text import MIMEText
-
 ###############################################################################
 # EDIT HERE.
 
@@ -17,7 +13,8 @@ class MailWasher:
 	# A username or password are not required. They are extracted from the database.
 	HostName = 'localhost'
 	Port = '4044'
-	SQLiteDB = '/opt/mwes/mwes.db'
+	Username = 'admin'
+	Password = 'password'
 
 class Plesk:
 	HostName = 'localhost'
@@ -28,6 +25,11 @@ class Plesk:
 # END EDIT. It would pay to leave everything below alone.
 ###############################################################################
 
+import os, sys, tempfile, pycurl, StringIO, smtplib, xml.dom.minidom, json, urllib
+from subprocess import Popen, PIPE
+from email.mime.text import MIMEText
+
+# Handles all E-mail notification.
 class Notifier:
 	MailTag = '[Plesk-MWES]'
 	
@@ -42,26 +44,38 @@ class Notifier:
 		
 	@staticmethod
 	def AddSuccess(domain_name):
-		message = MIMEText('Added "%s" to MailWasher.' % (domain_name))
-		message['Subject'] = '%s Added "%s" to MailWasher.' % (Notifier.MailTag, domain_name)
+		message = MIMEText('Added "%s" to MWES.' % (domain_name))
+		message['Subject'] = '%s Added "%s" to MWES.' % (Notifier.MailTag, domain_name)
 		Notifier.Send(message)
 		
 	@staticmethod
 	def AddFailure(domain_name):
-		message = MIMEText('Failed to add "%s" to MailWasher. Please resolve this issue manually.' % (domain_name))
-		message['Subject'] = '%s Failed to add "%s" to MailWasher.' % (Notifier.MailTag, domain_name)
+		message = MIMEText('Failed to add "%s" to MWES. Please resolve this issue manually.' % (domain_name))
+		message['Subject'] = '%s Failed to add "%s" to MWES.' % (Notifier.MailTag, domain_name)
+		Notifier.Send(message)
+		
+	@staticmethod
+	def RenameSuccess(domain_name_old, domain_name_new):
+		message = MIMEText('Renamed "%s" to "%s" in MWES.' % (domain_name_old, domain_name_new))
+		message['Subject'] = '%s Renamed "%s" to "%s" in MWES.' % (Notifier.MailTag, domain_name_old, domain_name_new)
+		Notifier.Send(message)
+		
+	@staticmethod
+	def RenameFailure(domain_name_old, domain_name_new):
+		message = MIMEText('Failed to rename "%s" to "%s" in MWES. Please resolve this issue manually.' % (domain_name_old, domain_name_new))
+		message['Subject'] = '%s Failed to rename "%s" to "%s" in MWES.' % (Notifier.MailTag, domain_name_old, domain_name_new)
 		Notifier.Send(message)
 		
 	@staticmethod
 	def RemoveSuccess(domain_name):
-		message = MIMEText('Removed "%s" from MailWasher.' % (domain_name))
-		message['Subject'] = '%s Removed "%s" from MailWasher.' % (Notifier.MailTag, domain_name)
+		message = MIMEText('Removed "%s" from MWES.' % (domain_name))
+		message['Subject'] = '%s Removed "%s" from MWES.' % (Notifier.MailTag, domain_name)
 		Notifier.Send(message)
 		
 	@staticmethod
 	def RemoveFailure(domain_name):
-		message = MIMEText('Failed to remove "%s" from MailWasher. Please resolve this issue manually.' % (domain_name))
-		message['Subject'] = '%s Failed to remove "%s" from MailWasher.' % (Notifier.MailTag, domain_name)
+		message = MIMEText('Failed to remove "%s" from MWES. Please resolve this issue manually.' % (domain_name))
+		message['Subject'] = '%s Failed to remove "%s" from MWES.' % (Notifier.MailTag, domain_name)
 		Notifier.Send(message)
 		
 	@staticmethod
@@ -80,13 +94,11 @@ class Notifier:
 				if domain_name in failed_domains: status = 'FAIL'
 				report += "\t%s [%s]\n" % (domain_name, status)
 		
-		report += "\n\n If you have received this report then Plesk and MWES have become unsynchronized. Are your Plesk events bound correctly?"
-		
 		message = MIMEText(report)
 		message['Subject'] = '%s Synchronization Report' % (Notifier.MailTag)
 		Notifier.Send(message)
 
-		
+# This makes Plesk API calls a LOT easier to diagnose when they go wrong.
 class PleskRPCError(Exception):
 
 	def __init__(self, error_code, error_text):
@@ -96,14 +108,14 @@ class PleskRPCError(Exception):
 	def __str__(self):
 		return '[%s] %s' % (self.error_code, self.error_text)
 
-		
+
+# This class handles all communication with Plesk via Plesk's XML based API.
 class PleskRPCAgent:
 
 	buffer = None # Buffer for incoming data.
 	curl = None # Curl agent.
 
 	def __init__(self, hostname, port, username, password):
-	
 		self.curl = pycurl.Curl()
 		
 		agent_url = 'https://' + hostname + ':' + port + '/enterprise/control/agent.php'
@@ -116,6 +128,7 @@ class PleskRPCAgent:
 		
 		self.reset_buffer()
 
+	# Check the response to ensure it was processed correctly. Let the user know what went wrong if anything did.
 	def check_response_status(self): 
 		# Parse buffer as XML.
 		dom = xml.dom.minidom.parseString(self.buffer.getvalue())
@@ -125,18 +138,20 @@ class PleskRPCAgent:
 			error_code = system_response[0].getElementsByTagName('errcode')[0].childNodes[0].data
 			error_text = system_response[0].getElementsByTagName('errtext')[0].childNodes[0].data
 			raise PleskRPCError(error_code, error_text)
-		
+	
+	# Reset Curl's buffer.
 	def reset_buffer(self):
 		# Destroy buffer if it exists, and release memory.
 		if self.buffer: self.buffer.close()
 		
+		# New buffer.
 		self.buffer = StringIO.StringIO()
 		
-		# Let Curl know where it is to write received data.
+		# Let Curl know where it is to write received data (buffer).
 		self.curl.setopt(pycurl.WRITEFUNCTION, self.buffer.write)
-		
-	def process(self, packet):
 	
+	# Handle sending the packet and verifying the response. Return XML dom of Plesk's return.
+	def process(self, packet):
 		self.reset_buffer()
 	
 		# Set the packet.
@@ -153,7 +168,8 @@ class PleskRPCAgent:
 
 		# Return received data.
 		return xml.dom.minidom.parseString(self.buffer.getvalue())
-		
+	
+	# Return all domains stored in Plesk.
 	def domains(self):
 		packet = '<packet version="1.5.2.0"><domain><get><filter /><dataset><gen_info /></dataset></get></domain></packet>'
 
@@ -166,6 +182,7 @@ class PleskRPCAgent:
 		
 		return sorted(domains)
 	
+	# Return all subdomains stored in Plesk.
 	def subdomains(self):
 		packet = '<packet version="1.5.2.0"><subdomain><get><filter /></get></subdomain></packet>'
 
@@ -179,7 +196,8 @@ class PleskRPCAgent:
 					subdomains.append(str(node.childNodes[0].data)) # Convert from Unicode to str.
 		
 		return sorted(subdomains)
-		
+	
+	# Return all domain aliases stored in Plesk.
 	def domain_aliases(self):
 		packet = '<packet version="1.5.2.0"><domain_alias><get><filter /></get></domain_alias></packet>'
 
@@ -193,49 +211,39 @@ class PleskRPCAgent:
 					subdomains.append(str(node.childNodes[0].data)) # Convert from Unicode to str.
 		
 		return sorted(subdomains)
-		
+	
+	# Return a list containing all domains, subdomains and domain aliases stored in Plesk.
 	def get_all_domains(self):
 		return sorted(agent.domains() + agent.subdomains() + agent.domain_aliases())
 
 		
-# This control handles MailWasher operations. Adding/Removing domains is done via Curl for instantaneous effect. Queries
-# for domain existence and enumeration are done via a direct interface with MWES's SQLite database.
+# This control handles MWES operations via a servlet Firetrust kindly organized for me (thanks guys!)
 class MWESControl:
 	
 	# Web-based hook.
 	buffer = None
 	curl = None
-
-	# SQLite-based hook.
-	connection = None
-	cursor = None
 	
 	agent_url = '' # URL of MailWasher.
 	
-	def __init__(self, hostname, port):
+	def __init__(self, hostname, port, username, password):
 		
-		# Store 
-		self.agent_url = 'http://%s:%s/' % (hostname, port)
+		# Store.
+		self.agent_url = 'http://%s:%s' % (hostname, port)
 		
 		# We need a cookie for MailWasher.
 		self.cookie_fd, self.cookie_path = tempfile.mkstemp('-mwc')
 		
-		# Connect to SQLite interface.
-		self.sql_connect()
-		
-		# Find the MailWasher username and password via SQL.
-		username, password = self.get_web_admin_info()
-		
 		# Connect to web interface.
-		self.web_connect(username, password)
-
+		self.connect(username, password)
+		
 	# Initiate Curl request and then return what we receive.
-	def process(self):
+	def __process(self):
 		self.curl.perform()
 		return self.buffer.getvalue()
 	
-	# Reset Curl and our StringIO buffer between requests.
-	def _web_reset(self):
+	# Reset buffer and curl.  Set curl options that are universal to all requests.
+	def __reset_connection(self):
 		if self.buffer: self.buffer.close() # Close the IO buffer if it exists.
 		if self.curl: self.curl.close() # Close Curl handle if it exists.
 
@@ -248,70 +256,82 @@ class MWESControl:
 		self.curl.setopt(pycurl.COOKIEFILE, self.cookie_path)
 		self.curl.setopt(pycurl.COOKIEJAR, self.cookie_path)
 	
+	# Build a request that can be used to call the MWES servlet.
+	def __build_request_url(self, controller, action, paramaters):
+		
+		# URL encode paramaters if there are any. 
+		paramaters_encoded = ''
+		if paramaters:
+			paramaters_encoded = urllib.urlencode(paramaters)
+			
+		return '%s/%s.srv?remoteAction=%s&%s' % (self.agent_url, controller, action, paramaters_encoded)
+		
+	# Make a request via the MWES servlet. Return JSON decoded output of servlet.
+	def request(self, controller, action, paramaters):
+		self.__reset_connection()
+		self.curl.setopt(pycurl.URL, self.__build_request_url(controller, action, paramaters))
+		return json.loads(self.__process())
+	
+	# Add a domain to MWES.
 	def add_domain(self, domain_name):
-		
-		# Do we even need to remove the domain?
-		if self.domain_exists(domain_name):
-			return 1
-			
-		self._web_reset()
-		new_domain_post_data = 'NewDomain=%s' % (domain_name)
-		self.curl.setopt(pycurl.POSTFIELDS, new_domain_post_data)
-		self.curl.setopt(pycurl.URL, self.agent_url + 'Domains.srv')
-		result = self.process()
-		return ('<td>' + domain_name + '</td>' in result)
-		
-	def remove_domain(self, domain_name):
-	
-		# Do we even need to remove the domain?
-		if not self.domain_exists(domain_name):
-			return 1
-	
-		self._web_reset()
-		remove_url = '%sDomains.srv?delete=%s' % (self.agent_url, domain_name)
-		self.curl.setopt(pycurl.URL, remove_url)
-		result = self.process()
-		return (not '<td>' + domain_name + '</td>' in result)
-	
-	def domain_exists(self, domain_name):
-		domain = (domain_name, )
-		self.cursor.execute('select domain from domains where domain = ? limit 1;', domain)
-		return (self.cursor.fetchone())
-			
-	def get_all_domains(self):
-		results = self.cursor.execute('select * from domains order by domain;')
-		domains = []
-		for domain in results:
-			domains.append(str(domain[1])) # Convert from Unicode to str.
-		return domains
-	
-	def sql_connect(self):
-		# Connect to SQLite DB.
-		self.connection = sqlite3.connect(MailWasher.SQLiteDB)
-		self.cursor = self.connection.cursor()
-		
-	def get_web_admin_info(self):
-		username = None
-		password = None
-		result = self.cursor.execute('select name, value from configure where name = "admin_username" or name = "admin_password";')
-		for row in result:
-			if row[0] == 'admin_username': username = str(row[1]) # Unicode to string for both.
-			if row[0] == 'admin_password': password = str(row[1])
-		return (username, password)
-	
-	def web_connect(self, username, password):
-		self._web_reset()
-		
-		login_post_data = 'userid=%s&password=%s' % (username, password)
-		self.curl.setopt(pycurl.POSTFIELDS, login_post_data)
-		self.curl.setopt(pycurl.URL, self.agent_url)
-		result = self.process()
+		# Set paramaters for request and make the actual request.
+		paramaters = { 'domain' : domain_name }
+		result = self.request('Domains', 'add', paramaters) # JSON decode of request.
 
+		# Return true if domain name was removed.
+		return result['remoteActionResponse'] != 'failed'
+	
+	# Rename a domain in MWES. No rename function in MWES yet, so we'll do things the UNIX "rename" way.
+	def rename_domain(self, domain_name_old, domain_name_new):	
+		return (self.remove_domain(domain_name_old) and self.add_domain(domain_name_new))
+	
+	# Remove a domain from MWES.
+	def remove_domain(self, domain_name):
+		# Set paramaters for request and make the actual request.
+		paramaters = { 'domain' : domain_name }
+		result = self.request('Domains', 'remove', paramaters) # JSON decode of request.
+		
+		# Return true if domain name was removed.
+		return result['remoteActionResponse'] != 'failed'
+			
+	# Check for the existence of a domain in MWES.
+	def domain_exists(self, domain_name):
+		# Set paramaters for request and make the actual request.
+		paramaters = { 'domain' : domain_name }
+		result = self.request('Domains', 'query', paramaters) # JSON decode of request.
+		
+		# Return true if domain name was returned.
+		if result['remoteActionResponse'] != 'failed':
+			return domain_name in result['domains']
+	
+	# Get a list containing all domain names in MWES.
+	def get_all_domains(self):
+		# Set paramaters for request and make the actual request.
+		results = self.request('Domains', 'query', None) # JSON decode of request.
+		
+		# Return true if domain name was returned.
+		if results['remoteActionResponse'] != 'failed':
+			return results['domains']
+	
+	# Connect to MWES and login so we can store a session cookie.
+	def connect(self, username, password):
+		self.__reset_connection()
+		
+		# Set fields.
+		login_fields = urllib.urlencode({'userid' : username, 'password' : password})
+		self.curl.setopt(pycurl.POSTFIELDS, login_fields)
+		self.curl.setopt(pycurl.URL, self.agent_url)
+		
+		# Process the actual request and return the response from MWES (full HTML page).
+		result = self.__process()
+
+		# HACK: Scrape the result for an error that only appears after a failed login.
 		if '<span class="Error">UserID Password incorrect</span>' in result:
-			print '[MAILWASHER] Your username or password is wrong.'
+			# Login failed: fatal.
+			print '[MWES] Your username or password is incorrect.'
 			exit()
 
-
+# This class essentially controls all synchronization.
 class PleskMWESSync:
 	
 	plesk_agent = None
@@ -336,10 +356,14 @@ class PleskMWESSync:
 	def for_removal(self):
 		return list(set(self.mailwasher_domain_list).difference(set(self.plesk_domain_list)))
 		
-
-# Establish our Plesk and MailWasher controls.		
+## ESTABLISH CONTROLS.
+######################
+	
 agent = PleskRPCAgent(Plesk.HostName, Plesk.Port, Plesk.Username, Plesk.Password)
-mwc = MWESControl(MailWasher.HostName, MailWasher.Port)
+mwc = MWESControl(MailWasher.HostName, MailWasher.Port, MailWasher.Username, MailWasher.Password)
+
+## PROCESS COMMAND LINE ARGUMENTS.
+##################################
 
 # Sync MailWasher with Plesk.
 if len(sys.argv) == 2 and sys.argv[1] == 'sync':
@@ -351,7 +375,7 @@ if len(sys.argv) == 2 and sys.argv[1] == 'sync':
 	
 	# If there is nothing to do, bail. No need to report anything, either.
 	if not new_domains and not old_domains:
-		print 'Plesk and MailWasher are synchronized.'
+		print 'Plesk and MWES are synchronized.'
 		exit()
 		
 	failed_domains = []
@@ -381,7 +405,7 @@ if len(sys.argv) == 2 and sys.argv[1] == 'sync':
 	Notifier.SynchronizationReport(new_domains, old_domains, failed_domains)
 	exit()
 
-# Create a domain in MailWasher.
+# Create a domain in MWES.
 if len(sys.argv) == 3 and sys.argv[1] == 'add-domain':
 	if mwc.add_domain(sys.argv[2]):
 		status = 'OK'
@@ -392,7 +416,18 @@ if len(sys.argv) == 3 and sys.argv[1] == 'add-domain':
 	print "Adding:\n\t%s [%s]" % (sys.argv[2], status)
 	exit()
 
-# Delete a domain in MailWasher.
+# Rename a domain in MWES.
+if len(sys.argv) == 4 and sys.argv[1] == 'rename-domain':
+	if mwc.rename_domain(sys.argv[2], sys.argv[3]):
+		status = 'OK'
+		Notifier.RenameSuccess(sys.argv[2], sys.argv[3])
+	else:
+		status = 'FAIL'
+		Notifier.RenameFailure(sys.argv[2], sys.argv[3])
+	print "Renaming:\n\t%s -> %s [%s]" % (sys.argv[2], sys.argv[3], status)
+	exit()
+	
+# Delete a domain in MWES.
 if len(sys.argv) == 3 and sys.argv[1] == 'remove-domain':
 	if mwc.remove_domain(sys.argv[2]):
 		status = 'OK'
@@ -405,7 +440,7 @@ if len(sys.argv) == 3 and sys.argv[1] == 'remove-domain':
 
 # Display help information if we haven't done anything else.
 print "To add or remove a single domain, use:"
-print sys.argv[0], '<add-domain,remove-domain> <domain>'
+print sys.argv[0], '<add-domain, rename-domain, remove-domain> <domain>'
 print
-print "To synchronize all MailWasher domains with Plesk, use:"
+print "To synchronize all MWES domains with Plesk, use:"
 print sys.argv[0], '<sync>'
