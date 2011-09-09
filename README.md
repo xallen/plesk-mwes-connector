@@ -69,6 +69,15 @@ If your configuration is wrong you will find out at this point. Correct the erro
     `/usr/local/bin/plesk-mwes-connector.py remove-domain <old_domain_name>`  
   * __Website updated__  
     `/usr/local/bin/plesk-mwes-connector.py rename-domain <old_domain_name> <new_domain_name>`
+3. Browse to _Scheduled Tasks_. Add a new scheduled task for the _root_ user with the following options:
+  * __Minute:__ 45
+  * __Hour__: 0
+  * __Day of the month__: *
+  * __Month__: *
+  * __Day of the week__: *
+  * __Command__:  
+  `/usr/local/bin/plesk-mwes-connector.py sync >/dev/null 2>&1`
+4. Daily sync is now enabled. If you used the options above the sync will occur at 45 minutes past MIDNIGHT (it is best to stagger scheduled tasks!)
 
 ### Plesk 9.5 - 10.x and above
 
@@ -92,6 +101,15 @@ If your configuration is wrong you will find out at this point. Correct the erro
     `/usr/local/bin/plesk-mwes-connector.py remove-domain ${OLD_DOMAIN_NAME}`  
   * __Website updated__  
     `/usr/local/bin/plesk-mwes-connector.py rename-domain ${OLD_DOMAIN_NAME} ${NEW_DOMAIN_NAME}`
+3. Browse to _Server Management > Tools & Utilities > Scheduled Tasks_. Add a new scheduled task for the _root_ user with the following options:
+  * __Minute:__ 45
+  * __Hour__: 0
+  * __Day of the month__: *
+  * __Month__: *
+  * __Day of the week__: *
+  * __Command__:  
+  `/usr/local/bin/plesk-mwes-connector.py sync >/dev/null 2>&1`
+4. Daily sync is now enabled. If you used the options above the sync will occur at 45 minutes past MIDNIGHT (it is best to stagger scheduled tasks!)
 
 
 ## Command-line Options
