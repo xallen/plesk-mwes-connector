@@ -39,11 +39,13 @@ http://a.llen.co.nz/chris/2011/09/installing-mailwasher-enterprise-server-in-a-p
 
 ### Plesk-MWES-Connector
 
-1. Copy _plesk-mwes-connector.py_ to _/usr/local/bin_.
-2. Set the owner of the script to _root_, and change the permissions to _u:rwx,g:---,o:---_
+1. Copy _plesk-mwes-connector.py_ to _/opt/mwes_.
+2. Set the owner and group of the script to _mwes_, and change the permissions to _u:rwx,g:---,o:---_ :  
+`chown mwes:mwes /opt/mwes/plesk-mwes-connector.py  
+chmod 700 /opt/mwes/plesk-mwes-connector.py`
 3. It is now safe to configure the script. Fire up your favorite editor and supply the information required in the EDIT section of the script.
 4. You should now import ALL domain names into MWES via the sync tool. If you installed the script in the default location:  
-`/usr/local/bin/plesk-mwes-connector.py sync`  
+`/opt/mwes/plesk-mwes-connector.py sync`  
 If your configuration is wrong you will find out at this point. Correct the error and repeat this step. If you have notifications enabled you will receive a synchronization report.
 5. Please follow the appropriate steps below for your version of Plesk. The instructions will assume the script is installed in the default location.
 
@@ -52,23 +54,23 @@ If your configuration is wrong you will find out at this point. Correct the erro
 1. Login to Plesk as _admin_ and browse to the _Event Management_ tool.
 2. Add the _Events_ below with the following settings: _user_: _root_ and _priority_: _normal (50)._  
   * __Domain alias created__  
-    `/usr/local/bin/plesk-mwes-connector.py add-domain <new_domain_alias_name>`
+    `/opt/mwes/plesk-mwes-connector.py add-domain <new_domain_alias_name>`
   * __Domain alias deleted__  
-    `/usr/local/bin/plesk-mwes-connector.py remove-domain <old_domain_alias_name>`
+    `/opt/mwes/plesk-mwes-connector.py remove-domain <old_domain_alias_name>`
   * __Domain alias updated__  
-    `/usr/local/bin/plesk-mwes-connector.py rename-domain <old_domain_alias_name> <new_domain_alias_name>`
+    `/opt/mwes/plesk-mwes-connector.py rename-domain <old_domain_alias_name> <new_domain_alias_name>`
   * __Subdomain created__  
-    `/usr/local/bin/plesk-mwes-connector.py add-domain <new_subdomain_name>.<new_domain_name>`
+    `/opt/mwes/plesk-mwes-connector.py add-domain <new_subdomain_name>.<new_domain_name>`
   * __Subdomain deleted__  
-    `/usr/local/bin/plesk-mwes-connector.py remove-domain <old_subdomain_name>.<old_domain_name>`
+    `/opt/mwes/plesk-mwes-connector.py remove-domain <old_subdomain_name>.<old_domain_name>`
   * __Subdomain updated__  
-    `/usr/local/bin/plesk-mwes-connector.py rename-domain <old_subdomain_name>.<old_domain_name> <new_subdomain_name>.<new_domain_name>`
+    `/opt/mwes/plesk-mwes-connector.py rename-domain <old_subdomain_name>.<old_domain_name> <new_subdomain_name>.<new_domain_name>`
   * __Website created__  
-    `/usr/local/bin/plesk-mwes-connector.py add-domain <new_domain_name>`
+    `/opt/mwes/plesk-mwes-connector.py add-domain <new_domain_name>`
   * __Website deleted__  
-    `/usr/local/bin/plesk-mwes-connector.py remove-domain <old_domain_name>`  
+    `/opt/mwes/plesk-mwes-connector.py remove-domain <old_domain_name>`  
   * __Website updated__  
-    `/usr/local/bin/plesk-mwes-connector.py rename-domain <old_domain_name> <new_domain_name>`
+    `/opt/mwes/plesk-mwes-connector.py rename-domain <old_domain_name> <new_domain_name>`
 3. Browse to _Scheduled Tasks_. Add a new scheduled task for the _root_ user with the following options:
   * __Minute:__ 45
   * __Hour__: 0
@@ -76,7 +78,7 @@ If your configuration is wrong you will find out at this point. Correct the erro
   * __Month__: *
   * __Day of the week__: *
   * __Command__:  
-  `/usr/local/bin/plesk-mwes-connector.py sync >/dev/null 2>&1`
+  `/opt/mwes/plesk-mwes-connector.py sync >/dev/null 2>&1`
 4. Daily sync is now enabled. If you used the options above the sync will occur at 45 minutes past MIDNIGHT (it is best to stagger scheduled tasks!)
 
 ### Plesk 9.5 - 10.x and above
@@ -84,23 +86,23 @@ If your configuration is wrong you will find out at this point. Correct the erro
 1. Login to Plesk as _admin_ and browse to the _Server Management > Tools & Utilities > Event Management_ section.
 2. Add the _Events_ below with the following settings: _user_: _root_ and _priority_: _normal (50)._
   * __Domain alias created__  
-    `/usr/local/bin/plesk-mwes-connector.py add-domain ${NEW_DOMAIN_ALIAS_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py add-domain ${NEW_DOMAIN_ALIAS_NAME}`
   * __Domain alias deleted__  
-    `/usr/local/bin/plesk-mwes-connector.py remove-domain ${OLD_DOMAIN_ALIAS_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py remove-domain ${OLD_DOMAIN_ALIAS_NAME}`
   * __Domain alias updated__  
-    `/usr/local/bin/plesk-mwes-connector.py rename-domain ${OLD_DOMAIN_ALIAS_NAME} ${NEW_DOMAIN_ALIAS_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py rename-domain ${OLD_DOMAIN_ALIAS_NAME} ${NEW_DOMAIN_ALIAS_NAME}`
   * __Subdomain created__  
-    `/usr/local/bin/plesk-mwes-connector.py add-domain ${NEW_SUBDOMAIN_NAME}.${NEW_DOMAIN_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py add-domain ${NEW_SUBDOMAIN_NAME}.${NEW_DOMAIN_NAME}`
   * __Subdomain deleted__  
-    `/usr/local/bin/plesk-mwes-connector.py remove-domain ${OLD_SUBDOMAIN_NAME}.${OLD_DOMAIN_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py remove-domain ${OLD_SUBDOMAIN_NAME}.${OLD_DOMAIN_NAME}`
   * __Subdomain updated__  
-    `/usr/local/bin/plesk-mwes-connector.py rename-domain ${OLD_SUBDOMAIN_NAME}.${OLD_DOMAIN_NAME} ${NEW_SUBDOMAIN_NAME}.${NEW_DOMAIN_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py rename-domain ${OLD_SUBDOMAIN_NAME}.${OLD_DOMAIN_NAME} ${NEW_SUBDOMAIN_NAME}.${NEW_DOMAIN_NAME}`
   * __Website created__  
-    `/usr/local/bin/plesk-mwes-connector.py add-domain ${NEW_DOMAIN_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py add-domain ${NEW_DOMAIN_NAME}`
   * __Website deleted__  
-    `/usr/local/bin/plesk-mwes-connector.py remove-domain ${OLD_DOMAIN_NAME}`  
+    `/opt/mwes/plesk-mwes-connector.py remove-domain ${OLD_DOMAIN_NAME}`  
   * __Website updated__  
-    `/usr/local/bin/plesk-mwes-connector.py rename-domain ${OLD_DOMAIN_NAME} ${NEW_DOMAIN_NAME}`
+    `/opt/mwes/plesk-mwes-connector.py rename-domain ${OLD_DOMAIN_NAME} ${NEW_DOMAIN_NAME}`
 3. Browse to _Server Management > Tools & Utilities > Scheduled Tasks_. Add a new scheduled task for the _root_ user with the following options:
   * __Minute:__ 45
   * __Hour__: 0
@@ -108,7 +110,7 @@ If your configuration is wrong you will find out at this point. Correct the erro
   * __Month__: *
   * __Day of the week__: *
   * __Command__:  
-  `/usr/local/bin/plesk-mwes-connector.py sync >/dev/null 2>&1`
+  `/opt/mwes/plesk-mwes-connector.py sync >/dev/null 2>&1`
 4. Daily sync is now enabled. If you used the options above the sync will occur at 45 minutes past MIDNIGHT (it is best to stagger scheduled tasks!)
 
 
@@ -157,4 +159,3 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org/>
-
