@@ -315,19 +315,15 @@ class MWESControl:
 	
 	# Connect to MWES and login so we can store a session cookie.
 	def connect(self, username, password):
-		self.__reset_connection()
+		# Set paramaters for request and make the actual request.
+		paramaters = { 'userid' : username, 'password' : password }
+		result = self.request('SystemConfig', 'login', paramaters) # JSON decode of request.
 		
-		# Set fields.
-		login_fields = urllib.urlencode({'userid' : username, 'password' : password})
-		self.curl.setopt(pycurl.POSTFIELDS, login_fields)
-		self.curl.setopt(pycurl.URL, self.agent_url)
-		
-		# Process the actual request and return the response from MWES (full HTML page).
-		result = self.__process()
-
-		# HACK: Scrape the result for an error that only appears after a failed login.
-		if '<span class="Error">UserID Password incorrect</span>' in result:
-			# Login failed: fatal.
+		# Login was successful.
+		if result['remoteActionResponse'] != 'failed':
+			return True
+		# Failure to login is fatal. Terminate.
+		else:
 			print '[MWES] Your username or password is incorrect.'
 			exit()
 
